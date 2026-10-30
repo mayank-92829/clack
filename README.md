@@ -60,9 +60,15 @@ You can go back into a previous word only if it has a mistake. Click the word li
 
 Tests shorter than 2 seconds or under 50% accuracy are not saved.
 
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how everything works, including the typing engine, caret, line scrolling, stat formulas, text generation, storage and the desktop shell.
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): setup, build, release steps, how to add themes, quotes, word lists and settings, and a step-by-step path to rebuild the app yourself.
+- [CHANGELOG.md](CHANGELOG.md)
+
 ## Build
 
-You need Node 20+, Rust and the Visual Studio Build Tools.
+You need Node 20+, Rust and the Visual Studio Build Tools (full setup in [DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
 ```bash
 npm install
