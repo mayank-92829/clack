@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clack</title>
+  </head>
+  <body>
+    <header id="top">
+      <div class="logo"><span class="logo-mark">c</span>clack</div>
+      <nav>
+        <button class="icon" id="statsBtn" title="Stats">
+          <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
+        </button>
+        <button class="icon" id="settingsBtn" title="Settings (Esc)">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+        </button>
+      </nav>
+    </header>
+
+    <div id="config"></div>
+
+    <main id="test">
+      <div id="live">
+        <span id="counter"></span>
+        <span id="liveWpm"></span>
+        <span id="liveAcc"></span>
+      </div>
+      <div id="caps" hidden>caps lock</div>
+      <div id="wrap">
+        <div id="caret"></div>
+        <div id="words"></div>
+        <div id="blurMsg">click here or press any key to focus</div>
+      </div>
+      <button class="icon restart" id="restartBtn" title="Restart (Tab)">
+        <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
+      </button>
+    </main>
+
+    <section id="result" hidden>
+      <div class="r-top">
+        <div class="r-big">
+          <div class="r-label">wpm</div>
+          <div class="r-num" id="rWpm"></div>
+          <div class="r-label">acc</div>
+          <div class="r-num" id="rAcc"></div>
+          <div id="rPb"></div>
+        </div>
+        <div class="r-chart">
+          <canvas id="chart"></canvas>
+          <div id="tip" hidden></div>
+        </div>
+      </div>
+      <div class="r-stats">
+        <div><div class="r-label">test type</div><div class="r-val small" id="rType"></div></div>
+        <div><div class="r-label">raw</div><div class="r-val" id="rRaw"></div></div>
+        <div><div class="r-label">characters</div><div class="r-val" id="rChars" title="correct / incorrect / extra / missed"></div></div>
+        <div><div class="r-label">consistency</div><div class="r-val" id="rCons"></div></div>
+        <div><div class="r-label">time</div><div class="r-val" id="rTime"></div></div>
+      </div>
+      <div id="rSource"></div>
+      <div class="r-actions">
+        <button class="icon" id="nextBtn" title="Next test (Tab / Enter)">
+          <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+        <button class="icon" id="repeatBtn" title="Repeat test (Shift+Tab)">
+          <svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" /></svg>
+        </button>
+        <button class="icon" id="historyBtn" title="Show typed words">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+        </button>
+      </div>
+      <div id="history" hidden></div>
+    </section>
+
+    <footer id="foot">
+      <div class="keys"><kbd>tab</kbd> restart <span class="dot">·</span> <kbd>shift</kbd> + <kbd>tab</kbd> repeat <span class="dot">·</span> <kbd>esc</kbd> settings</div>
+      <button class="link" id="themeBtn"></button>
+    </footer>
+
+    <div id="modal" hidden><div class="panel" id="panel"></div></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
