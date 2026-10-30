@@ -4,15 +4,19 @@ import "./style.css";
 import { settings, saveSettings, read, write, type Mode, type Settings } from "./settings";
 import { THEMES, themeByName, applyTheme } from "./themes";
 import { generateWords, endSentence, pickQuote, customWords, type GenOptions } from "./generator";
+import { LANGUAGES } from "./words";
+import { version } from "../package.json";
 import { lengthOf, type Quote } from "./quotes";
 import { drawChart, hoverIndex, type Sample } from "./chart";
 import { playKey } from "./sound";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const body = document.body;
 const root = document.documentElement;
 const wordsEl = $("words");
-const caret = $("caret");
+const caret = document.createElement("div");
+caret.id = "caret";
 const testEl = $("test");
 const resultEl = $("result");
 const configEl = $("config");
@@ -29,6 +33,7 @@ let els: (HTMLElement | null)[] = [];
 let idx = 0; // active word
 let firstIdx = 0; // first word still in the DOM (earlier lines are removed as you type)
 let lineH = 0;
+let scrolling: Animation | null = null;
 let started = false;
 let finished = false;
 let startAt = 0;
@@ -60,6 +65,19 @@ interface Best {
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const svg = (d: string) => `<svg viewBox="0 0 24 24">${d}</svg>`;
+const ICON_EDIT = svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>');
+const ICON_GLOBE = svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>');
+const ICON_CROWN = svg('<path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/>');
+const ICON_X = svg('<path d="M6 6l12 12M18 6L6 18"/>');
+const MODE_ICONS: Record<Mode, string> = {
+  time: svg('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/>'),
+  words: svg('<path d="M4 7V5h16v2M12 5v14M9 19h6"/>'),
+  quote: svg('<path d="M10 7H5v6h4c0 2-1 3.5-3 4M19 7h-5v6h4c0 2-1 3.5-3 4"/>'),
+  custom: svg('<path d="M4 6h10M4 12h16M4 18h7"/><path d="M18 3v6M15 6h6"/>'),
+};
+const CLOSE_BTN = `<button class="icon x" data-close title="Close (Esc)">${ICON_X}</button>`;
 
 /** Letters of one word: correct, wrong (shows the expected letter), untyped, then extra letters. */
 function wordHTML(t: string, s: string): string {
@@ -111,8 +129,11 @@ function newTest(repeat = false): void {
   resultEl.hidden = true;
   testEl.hidden = false;
 
+  scrolling?.cancel();
+  scrolling = null;
   wordsEl.innerHTML = targets.map((t) => `<div class="word">${wordHTML(t, "")}</div>`).join("");
   els = Array.from(wordsEl.children) as HTMLElement[];
+  wordsEl.prepend(caret);
   lineH = parseFloat(getComputedStyle(wordsEl).fontSize) * 2;
   wordsEl.classList.add("fade");
   void wordsEl.offsetWidth;
@@ -121,6 +142,7 @@ function newTest(repeat = false): void {
   $("liveWpm").textContent = "";
   $("liveAcc").textContent = "";
   updateCounter();
+  updateLangLabel();
   placeCaret(true);
   caret.classList.add("blink");
 }
@@ -156,22 +178,37 @@ function placeCaret(instant = false): void {
   }
 }
 
-/** Keeps the active word on the first or second line by dropping the first line once you reach the third. */
+/**
+ * Keeps the active word on the first or second line: once you reach the third, the first line
+ * slides up out of view and is then removed.
+ */
 function scrollLines(): void {
+  if (scrolling) return;
   const el = els[idx];
   const first = els[firstIdx];
   if (!el || !first || el.offsetTop - first.offsetTop < lineH * 1.5) return;
   const top = first.offsetTop;
+  const from = firstIdx;
   const gone: HTMLElement[] = [];
   for (let i = firstIdx; i < idx; i++) {
     const e = els[i]!;
     if (e.offsetTop !== top) break;
     gone.push(e);
   }
-  for (const e of gone) e.remove();
-  for (let i = 0; i < gone.length; i++) els[firstIdx + i] = null;
-  firstIdx += gone.length;
-  placeCaret(true);
+  firstIdx += gone.length; // those words can no longer be reopened with backspace
+  const anim = wordsEl.animate([{ transform: "none" }, { transform: `translateY(${-lineH}px)` }], {
+    duration: 140,
+    easing: "cubic-bezier(0.25, 0.8, 0.3, 1)",
+  });
+  scrolling = anim;
+  anim.onfinish = () => {
+    if (scrolling !== anim) return;
+    scrolling = null;
+    for (const e of gone) e.remove();
+    for (let i = 0; i < gone.length; i++) els[from + i] = null;
+    placeCaret(true);
+    scrollLines();
+  };
 }
 
 function typingNow(): void {
@@ -376,7 +413,7 @@ function showResult(r: Result): void {
   // Personal bests and history. Tests under 2 seconds or below 50% accuracy are not counted.
   const pb = $("rPb");
   pb.classList.remove("new");
-  pb.textContent = "";
+  let pbText = "";
   const valid = r.time >= 2 && r.acc >= 50 && Number.isFinite(r.wpm);
   if (valid) {
     const history = read<Result[]>("clack.history", []);
@@ -388,15 +425,16 @@ function showResult(r: Result): void {
       if (!prev || r.wpm > prev.wpm) {
         bests[r.key] = { wpm: r.wpm, acc: r.acc, raw: r.raw, date: r.date };
         write("clack.pbs", bests);
-        pb.textContent = prev ? `new personal best (+${Math.round(r.wpm - prev.wpm)})` : "new personal best";
+        pbText = prev ? `new personal best +${Math.round(r.wpm - prev.wpm)}` : "new personal best";
         pb.classList.add("new");
       } else {
-        pb.textContent = `best ${Math.round(prev.wpm)} wpm`;
+        pbText = `best ${Math.round(prev.wpm)} wpm`;
       }
     }
   } else {
-    pb.textContent = "test too short to count";
+    pbText = "too short to count";
   }
+  pb.innerHTML = pbText ? `${pb.classList.contains("new") ? ICON_CROWN : ""}<span>${pbText}</span>` : "";
 
   const words: string[] = [];
   for (let i = 0; i <= idx; i++) {
@@ -418,7 +456,7 @@ chart.addEventListener("mousemove", (e) => {
   const i = hoverIndex(chart, e.clientX, samples.length);
   drawChart(chart, samples, i);
   const s = samples[i];
-  tip.innerHTML = `<div>${i + 1}s</div><div>wpm <b>${s.wpm}</b></div><div>raw <b>${s.raw}</b></div><div>errors <b>${s.errors}</b></div>`;
+  tip.innerHTML = `<div class="t-head">${i + 1}s</div><div>wpm <b>${s.wpm}</b></div><div>raw <b>${s.raw}</b></div><div>errors <b>${s.errors}</b></div>`;
   tip.hidden = false;
   const r = chart.getBoundingClientRect();
   const x = e.clientX - r.left;
@@ -433,20 +471,20 @@ chart.addEventListener("mouseleave", () => {
 
 function renderConfig(): void {
   const s = settings;
-  const opt = (label: string, act: string, on: boolean) =>
-    `<button class="opt${on ? " on" : ""}" data-act="${act}">${label}</button>`;
+  const opt = (label: string, act: string, on: boolean, icon = "") =>
+    `<button class="opt${on ? " on" : ""}" data-act="${act}">${icon}${label}</button>`;
   let h = "";
   if (s.mode === "time" || s.mode === "words")
     h +=
       `<div class="group">${opt('<span class="glyph">@</span>punctuation', "punct", s.punctuation)}` +
       `${opt('<span class="glyph">#</span>numbers', "nums", s.numbers)}</div><div class="sep"></div>`;
-  h += `<div class="group">${(["time", "words", "quote", "custom"] as Mode[]).map((m) => opt(m, `mode:${m}`, s.mode === m)).join("")}</div>`;
+  h += `<div class="group">${(["time", "words", "quote", "custom"] as Mode[]).map((m) => opt(m, `mode:${m}`, s.mode === m, MODE_ICONS[m])).join("")}</div>`;
   h += `<div class="sep"></div><div class="group">`;
   if (s.mode === "time") h += [15, 30, 60, 120].map((n) => opt(String(n), `time:${n}`, s.time === n)).join("");
   if (s.mode === "words") h += [10, 25, 50, 100].map((n) => opt(String(n), `words:${n}`, s.words === n)).join("");
   if (s.mode === "quote")
     h += (["all", "short", "medium", "long"] as const).map((l) => opt(l, `quote:${l}`, s.quoteLength === l)).join("");
-  if (s.mode === "custom") h += opt("edit text", "edit", false);
+  if (s.mode === "custom") h += opt("edit text", "edit", false, ICON_EDIT);
   configEl.innerHTML = h + "</div>";
 }
 
@@ -490,7 +528,7 @@ function openModal(html: string): void {
     resumeAfterModal = true;
   }
   body.classList.remove("typing");
-  panel.innerHTML = html;
+  panel.innerHTML = CLOSE_BTN + html;
   panel.scrollTop = 0;
   modal.hidden = false;
 }
@@ -507,20 +545,21 @@ modal.addEventListener("mousedown", (e) => {
 });
 
 type Opt = [Settings[keyof Settings], string];
-const ROWS: { key: keyof Settings; name: string; desc?: string; opts: Opt[] }[] = [
-  { key: "language", name: "language", desc: "word list for time and words tests", opts: [["english", "english 200"], ["english 1k", "english 1k"]] },
-  { key: "font", name: "font", opts: [["JetBrains Mono Variable", "jetbrains mono"], ["Roboto Mono Variable", "roboto mono"], ["Consolas", "consolas"], ["Segoe UI", "segoe ui"]] },
+const ROWS: { key: keyof Settings; name: string; desc?: string; opts: Opt[]; section?: string }[] = [
+  { section: "test", key: "language", name: "word list", desc: "used by time and words tests", opts: [["english", "english 200"], ["english 1k", "english 1k"]] },
+  { key: "liveWpm", name: "live wpm", desc: "speed above the words, updated every second", opts: [[true, "show"], [false, "hide"]] },
+  { key: "liveAcc", name: "live accuracy", opts: [[true, "show"], [false, "hide"]] },
+  { key: "sound", name: "key sound", desc: "synthesized, no audio files", opts: [["off", "off"], ["click", "click"], ["soft", "soft"]] },
+  { section: "appearance", key: "font", name: "font", opts: [["JetBrains Mono Variable", "jetbrains mono"], ["Roboto Mono Variable", "roboto mono"], ["Consolas", "consolas"], ["Segoe UI", "segoe ui"]] },
   { key: "fontSize", name: "font size", opts: [[1.25, "small"], [1.6, "medium"], [2, "large"], [2.5, "huge"]] },
   { key: "caret", name: "caret", opts: [["line", "line"], ["block", "block"], ["underline", "underline"]] },
   { key: "smoothCaret", name: "smooth caret", desc: "the caret glides between letters", opts: [[true, "on"], [false, "off"]] },
-  { key: "liveWpm", name: "live wpm", desc: "speed above the words, updated every second", opts: [[true, "show"], [false, "hide"]] },
-  { key: "liveAcc", name: "live accuracy", opts: [[true, "show"], [false, "hide"]] },
-  { key: "sound", name: "key sound", opts: [["off", "off"], ["click", "click"], ["soft", "soft"]] },
 ];
 
 function settingsHTML(): string {
   const rows = ROWS.map(
     (r, ri) =>
+      (r.section ? `<h3>${r.section}</h3>` : "") +
       `<div class="row"><div><div class="name">${r.name}</div>${r.desc ? `<div class="desc">${r.desc}</div>` : ""}</div>` +
       `<div class="seg">${r.opts
         .map(([v, label], oi) => `<button class="btn${settings[r.key] === v ? " on" : ""}" data-row="${ri}" data-opt="${oi}">${label}</button>`)
@@ -541,6 +580,7 @@ function openSettings(): void {
 panel.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("button");
   if (!b) return;
+  if (b.dataset.close !== undefined) return closeModal();
   if (b.dataset.row) {
     const row = ROWS[Number(b.dataset.row)];
     (settings as unknown as Record<string, unknown>)[row.key] = row.opts[Number(b.dataset.opt)][0];
@@ -552,7 +592,7 @@ panel.addEventListener("click", (e) => {
   if (b.dataset.row && ["language", "font", "fontSize"].includes(ROWS[Number(b.dataset.row)].key)) resumeAfterModal = true;
   if (b.dataset.row && ROWS[Number(b.dataset.row)].key === "language") targets = [];
   const top = panel.scrollTop;
-  panel.innerHTML = settingsHTML();
+  panel.innerHTML = CLOSE_BTN + settingsHTML();
   panel.scrollTop = top;
 });
 
@@ -704,10 +744,47 @@ $("settingsBtn").addEventListener("click", openSettings);
 $("themeBtn").addEventListener("click", openSettings);
 $("statsBtn").addEventListener("click", openStats);
 
+function updateLangLabel(): void {
+  const l = $("langLabel");
+  const s = settings;
+  l.classList.toggle("static", s.mode === "quote");
+  l.title = s.mode === "custom" ? "Edit custom text" : s.mode === "quote" ? "" : "Switch word list";
+  l.innerHTML =
+    s.mode === "quote"
+      ? `${MODE_ICONS.quote}${quote ? lengthOf(quote) : ""} quote`
+      : s.mode === "custom"
+        ? `${ICON_EDIT}custom text${s.customShuffle ? ", shuffled" : ""}`
+        : `${ICON_GLOBE}${s.language}`;
+}
+
+$("langLabel").addEventListener("click", () => {
+  if (settings.mode === "custom") return openCustom();
+  if (settings.mode === "quote") return;
+  const names = Object.keys(LANGUAGES);
+  settings.language = names[(names.indexOf(settings.language) + 1) % names.length];
+  saveSettings();
+  newTest();
+});
+
+$("version").textContent = `v${version}`;
+
+// The desktop app draws its own title bar so it matches the theme.
+const isTauri = "__TAURI_INTERNALS__" in window;
+if (isTauri) {
+  const win = getCurrentWindow();
+  body.classList.add("tauri");
+  $("titlebar").hidden = false;
+  $("wMin").addEventListener("click", () => win.minimize());
+  $("wMax").addEventListener("click", () => win.toggleMaximize());
+  $("wClose").addEventListener("click", () => win.close());
+}
+
 applyAppearance();
 renderConfig();
 newTest();
 document.fonts.ready.then(() => {
   lineH = parseFloat(getComputedStyle(wordsEl).fontSize) * 2;
   placeCaret(true);
+  // The window starts hidden so it never flashes the wrong theme.
+  if (isTauri) getCurrentWindow().show();
 });

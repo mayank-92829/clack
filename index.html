@@ -6,11 +6,17 @@
     <title>Clack</title>
   </head>
   <body>
-    <header id="top">
-      <div class="logo"><span class="logo-mark">c</span>clack</div>
+    <div id="titlebar" data-tauri-drag-region hidden>
+      <button id="wMin" title="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8" /></svg></button>
+      <button id="wMax" title="Maximize"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" /></svg></button>
+      <button id="wClose" class="close" title="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" /></svg></button>
+    </div>
+
+    <header id="top" data-tauri-drag-region>
+      <div class="logo"><span class="keycap">c</span><span class="wordmark">clack</span></div>
       <nav>
         <button class="icon" id="statsBtn" title="Stats">
-          <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
+          <svg viewBox="0 0 24 24"><path d="M5 20v-6M12 20V4M19 20v-10" /></svg>
         </button>
         <button class="icon" id="settingsBtn" title="Settings (Esc)">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
@@ -22,15 +28,17 @@
 
     <main id="test">
       <div id="live">
-        <span id="counter"></span>
-        <span id="liveWpm"></span>
-        <span id="liveAcc"></span>
+        <div class="stats"><span id="counter"></span><span id="liveWpm"></span><span id="liveAcc"></span></div>
+        <button id="langLabel" title="Switch word list"></button>
       </div>
-      <div id="caps" hidden>caps lock</div>
+      <div id="caps" hidden>
+        <svg viewBox="0 0 24 24"><path d="M12 4l7 8h-4v5H9v-5H5z" /><path d="M9 20h6" /></svg>caps lock
+      </div>
       <div id="wrap">
-        <div id="caret"></div>
         <div id="words"></div>
-        <div id="blurMsg">click here or press any key to focus</div>
+        <div id="blurMsg">
+          <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z" /></svg>click here or press any key to focus
+        </div>
       </div>
       <button class="icon restart" id="restartBtn" title="Restart (Tab)">
         <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
@@ -47,6 +55,7 @@
           <div id="rPb"></div>
         </div>
         <div class="r-chart">
+          <div class="legend"><span class="l-wpm">wpm</span><span class="l-raw">raw</span><span class="l-err">errors</span></div>
           <canvas id="chart"></canvas>
           <div id="tip" hidden></div>
         </div>
@@ -75,7 +84,10 @@
 
     <footer id="foot">
       <div class="keys"><kbd>tab</kbd> restart <span class="dot">·</span> <kbd>shift</kbd> + <kbd>tab</kbd> repeat <span class="dot">·</span> <kbd>esc</kbd> settings</div>
-      <button class="link" id="themeBtn"></button>
+      <div class="foot-right">
+        <button class="link" id="themeBtn"></button>
+        <span class="version" id="version"></span>
+      </div>
     </footer>
 
     <div id="modal" hidden><div class="panel" id="panel"></div></div>
