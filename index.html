@@ -1,11 +1,61 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background:var(--bg,#1b1d22)">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Clack</title>
+    <script>
+      (function() {
+        document.documentElement.classList.add('preload');
+        try {
+          var raw = localStorage.getItem('clack.settings');
+          var s = raw ? JSON.parse(raw) : null;
+          var themes = {
+            dusk: { bg: "#1b1d22", alt: "#24272e", sub: "#646a7a", text: "#d8dce4", main: "#e0b25c", error: "#ef6f6c", extra: "#9e4a49" },
+            glacier: { bg: "#1f2630", alt: "#28313d", sub: "#5d6a80", text: "#dbe3ee", main: "#7fc4dd", error: "#e8737d", extra: "#a04b54" },
+            moss: { bg: "#19201b", alt: "#222b24", sub: "#56705e", text: "#d4e2d6", main: "#93d48f", error: "#ec7a6f", extra: "#a8504a" },
+            ember: { bg: "#221c1a", alt: "#2d2522", sub: "#76645b", text: "#ecdccd", main: "#f08a4b", error: "#ff6262", extra: "#b03c3c" },
+            plum: { bg: "#241b28", alt: "#2f2334", sub: "#73607e", text: "#eadcf0", main: "#d98ce6", error: "#ff7088", extra: "#b04a5c" },
+            lagoon: { bg: "#10272b", alt: "#173338", sub: "#4f777d", text: "#d6eeee", main: "#4fd1c5", error: "#ff7a7a", extra: "#b04f4f" },
+            mono: { bg: "#121212", alt: "#1d1d1d", sub: "#5c5c5c", text: "#e6e6e6", main: "#ffffff", error: "#ff5c5c", extra: "#a33a3a" },
+            paper: { bg: "#f3efe6", alt: "#e7e1d4", sub: "#a39c8e", text: "#2f2c27", main: "#c2522d", error: "#d33a3a", extra: "#9c2a2a" },
+            chalk: { bg: "#fafafa", alt: "#ececec", sub: "#ababab", text: "#333333", main: "#2f6fde", error: "#e04848", extra: "#a33333" },
+            sakura: { bg: "#fbeff2", alt: "#f2dde3", sub: "#c095a2", text: "#4a2f38", main: "#e05a85", error: "#d6304a", extra: "#9e2236" }
+          };
+          var t = (s && themes[s.theme]) || themes.dusk;
+          var el = document.documentElement.style;
+          for (var k in t) el.setProperty('--' + k, t[k]);
+          el.backgroundColor = t.bg;
+          if (s && s.font) el.setProperty('--font', '"' + s.font + '", ui-monospace, Consolas, monospace');
+          if (s && s.fontSize) el.setProperty('--size', s.fontSize + 'rem');
+        } catch(e) {}
+        setTimeout(function() {
+          document.documentElement.classList.remove('preload');
+        }, 800);
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/style.css" />
+    <style>
+      html, body {
+        background: var(--bg, #1b1d22);
+        margin: 0;
+      }
+      html.preload body {
+        opacity: 0 !important;
+        visibility: hidden !important;
+      }
+      body {
+        opacity: 1;
+        transition: opacity 0.12s ease-out;
+      }
+      svg { width: 20px; height: 20px; flex: none; }
+      #blurMsg { display: none !important; opacity: 0 !important; }
+      body.blurred #blurMsg { display: flex !important; opacity: 1 !important; }
+      #blurMsg svg { width: 18px !important; height: 18px !important; }
+      #titlebar[hidden] { display: none !important; }
+    </style>
   </head>
-  <body>
+  <body style="background:var(--bg,#1b1d22)">
     <div id="titlebar" data-tauri-drag-region hidden>
       <button id="wMin" title="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8" /></svg></button>
       <button id="wMax" title="Maximize"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" /></svg></button>
@@ -15,6 +65,7 @@
     <header id="top" data-tauri-drag-region>
       <div class="logo"><span class="keycap">c</span><span class="wordmark">clack</span></div>
       <nav>
+        <button class="icon" id="themeToggleBtn" title="Toggle Light / Default Mode"></button>
         <button class="icon" id="statsBtn" title="Stats">
           <svg viewBox="0 0 24 24"><path d="M5 20v-6M12 20V4M19 20v-10" /></svg>
         </button>
@@ -36,8 +87,8 @@
       </div>
       <div id="wrap">
         <div id="words"></div>
-        <div id="blurMsg">
-          <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z" /></svg>click here or press any key to focus
+        <div id="blurMsg" style="display:none;opacity:0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" style="width:18px;height:18px;"><path d="M5 3l14 8-6 2-3 6z" /></svg>click here or press any key to focus
         </div>
       </div>
       <button class="icon restart" id="restartBtn" title="Restart (Tab)">
@@ -89,6 +140,22 @@
         <span class="version" id="version"></span>
       </div>
     </footer>
+
+    <div id="celebration" hidden>
+      <canvas id="confettiCanvas"></canvas>
+      <div class="celebration-card">
+        <div class="celebration-badge">
+          <span class="popper-icon">🎉</span>
+        </div>
+        <h2 class="celebration-title">Test Complete!</h2>
+        <div class="celebration-sparkles">✨ Party Popper! Awesome Job! ✨</div>
+        <div class="celebration-preview" id="celebrationPreview"></div>
+        <button id="viewScoreBtn" class="btn primary celebration-btn">
+          <span>View Score</span>
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+        </button>
+      </div>
+    </div>
 
     <div id="modal" hidden><div class="panel" id="panel"></div></div>
 

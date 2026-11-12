@@ -24,6 +24,10 @@ const modal = $("modal");
 const panel = $("panel");
 const chart = $<HTMLCanvasElement>("chart");
 const tip = $("tip");
+const themeToggleBtn = $("themeToggleBtn");
+const celebrationModal = $("celebration");
+const confettiCanvas = $<HTMLCanvasElement>("confettiCanvas");
+const viewScoreBtn = $("viewScoreBtn");
 
 // ---------------------------------------------------------------- test state
 
@@ -78,6 +82,11 @@ const MODE_ICONS: Record<Mode, string> = {
   custom: svg('<path d="M4 6h10M4 12h16M4 18h7"/><path d="M18 3v6M15 6h6"/>'),
 };
 const CLOSE_BTN = `<button class="icon x" data-close title="Close (Esc)">${ICON_X}</button>`;
+const ICON_SUN = svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>');
+const ICON_MOON = svg('<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>');
+const LIGHT_THEMES = new Set(["chalk", "paper", "sakura"]);
+const isLightTheme = (name: string) => LIGHT_THEMES.has(name);
+let isInitialLoad = true;
 
 /** Letters of one word: correct, wrong (shows the expected letter), untyped, then extra letters. */
 function wordHTML(t: string, s: string): string {
@@ -119,6 +128,11 @@ function buildTargets(): string[] {
 
 function newTest(repeat = false): void {
   clearTimeout(timer);
+  clearTimeout(celebrationTimer);
+  stopConfetti();
+  celebrationModal.hidden = true;
+  pendingResult = null;
+
   if (!repeat || !targets.length) targets = buildTargets();
   typed = [""];
   idx = firstIdx = 0;
@@ -135,16 +149,20 @@ function newTest(repeat = false): void {
   els = Array.from(wordsEl.children) as HTMLElement[];
   wordsEl.prepend(caret);
   lineH = parseFloat(getComputedStyle(wordsEl).fontSize) * 2;
-  wordsEl.classList.add("fade");
-  void wordsEl.offsetWidth;
-  wordsEl.classList.remove("fade");
+  if (!isInitialLoad) {
+    wordsEl.classList.add("fade");
+    void wordsEl.offsetWidth;
+    wordsEl.classList.remove("fade");
+    placeCaret(true);
+    caret.classList.add("blink");
+  } else {
+    caret.style.opacity = "0";
+  }
 
   $("liveWpm").textContent = "";
   $("liveAcc").textContent = "";
   updateCounter();
   updateLangLabel();
-  placeCaret(true);
-  caret.classList.add("blink");
 }
 
 function appendWords(): void {
@@ -170,11 +188,14 @@ function placeCaret(instant = false): void {
     x = l.offsetLeft + l.offsetWidth;
     y = l.offsetTop;
   }
-  if (instant) caret.classList.add("noanim");
-  caret.style.transform = `translate3d(${x}px, ${y}px, 0)`;
   if (instant) {
-    void caret.offsetWidth;
-    caret.classList.remove("noanim");
+    caret.classList.add("noanim");
+    caret.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    requestAnimationFrame(() => {
+      caret.classList.remove("noanim");
+    });
+  } else {
+    caret.style.transform = `translate3d(${x}px, ${y}px, 0)`;
   }
 }
 
@@ -372,15 +393,16 @@ function finish(): void {
     chars += s.length;
   }
   const minutes = elapsed / 60;
+  const safeMinutes = minutes > 0 ? minutes : 1 / 60;
   const raws = samples.map((s) => s.raw);
-  const mean = raws.reduce((a, b) => a + b, 0) / raws.length;
-  const sd = Math.sqrt(raws.reduce((a, b) => a + (b - mean) ** 2, 0) / raws.length);
+  const mean = raws.length ? raws.reduce((a, b) => a + b, 0) / raws.length : 0;
+  const sd = raws.length ? Math.sqrt(raws.reduce((a, b) => a + (b - mean) ** 2, 0) / raws.length) : 0;
   const cv = mean ? sd / mean : 1;
   const type = testType();
 
   const r: Result = {
-    wpm: (correctChars() / 5) / minutes,
-    raw: ((chars + idx) / 5) / minutes,
+    wpm: (correctChars() / 5) / safeMinutes,
+    raw: ((chars + idx) / 5) / safeMinutes,
     acc: accuracy(),
     consistency: mean ? 100 * (1 - Math.tanh(cv + cv ** 3 / 3 + cv ** 5 / 5)) : 0,
     time: elapsed,
@@ -389,10 +411,157 @@ function finish(): void {
     key: type.key,
     date: Date.now(),
   };
-  showResult(r);
+  showCelebration(r);
 }
 
-// ---------------------------------------------------------------- results
+// ---------------------------------------------------------------- celebration & results
+
+interface ConfettiParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  rotation: number;
+  vRot: number;
+  shape: "rect" | "circle";
+  opacity: number;
+  wobbleSpeed: number;
+}
+
+let pendingResult: Result | null = null;
+let celebrationTimer = 0;
+let confettiAnimId = 0;
+let celebrationStartTime = 0;
+
+function stopConfetti(): void {
+  if (confettiAnimId) {
+    cancelAnimationFrame(confettiAnimId);
+    confettiAnimId = 0;
+  }
+  const ctx = confettiCanvas.getContext("2d");
+  if (ctx) ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+}
+
+function startConfetti(): void {
+  stopConfetti();
+  const dpr = window.devicePixelRatio || 1;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  confettiCanvas.width = Math.round(w * dpr);
+  confettiCanvas.height = Math.round(h * dpr);
+  const ctx = confettiCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const colors = ["#e0b25c", "#ef6f6c", "#7fc4dd", "#93d48f", "#d98ce6", "#ffc107", "#ff4081", "#00e676", "#29b6f6"];
+  const particles: ConfettiParticle[] = [];
+  const numParticles = 80;
+
+  for (let i = 0; i < numParticles; i++) {
+    const fromLeft = i % 2 === 0;
+    const originX = fromLeft ? w * 0.12 : w * 0.88;
+    const originY = h * 0.82;
+    const baseAngle = fromLeft ? -Math.PI / 4 : (-3 * Math.PI) / 4;
+    const angle = baseAngle + (Math.random() * 0.5 - 0.25);
+    const speed = 14 + Math.random() * 12;
+
+    particles.push({
+      x: originX,
+      y: originY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 7 + Math.random() * 7,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.22,
+      shape: Math.random() > 0.35 ? "rect" : "circle",
+      opacity: 1,
+      wobbleSpeed: 2 + Math.random() * 3,
+    });
+  }
+
+  let frame = 0;
+  const maxFrames = 220; // ~3.6s
+
+  function loop(): void {
+    frame++;
+    ctx!.clearRect(0, 0, w, h);
+    let alive = 0;
+
+    for (const p of particles) {
+      p.x += p.vx + Math.sin(frame * 0.1 * p.wobbleSpeed) * 0.7;
+      p.y += p.vy;
+      p.vy += 0.35; // gravity
+      p.vx *= 0.985; // air resistance
+      p.rotation += p.vRot;
+
+      if (frame > 140) {
+        p.opacity = Math.max(0, p.opacity - 0.015);
+      }
+
+      if (p.opacity > 0 && p.y < h + 30) {
+        alive++;
+        ctx!.save();
+        ctx!.globalAlpha = p.opacity;
+        ctx!.translate(p.x, p.y);
+        ctx!.rotate(p.rotation);
+        ctx!.fillStyle = p.color;
+
+        if (p.shape === "rect") {
+          ctx!.scale(Math.cos(p.rotation), 1);
+          ctx!.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        } else {
+          ctx!.beginPath();
+          ctx!.arc(0, 0, p.size / 2.5, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+        ctx!.restore();
+      }
+    }
+
+    if (alive > 0 && frame < maxFrames) {
+      confettiAnimId = requestAnimationFrame(loop);
+    } else {
+      stopConfetti();
+    }
+  }
+
+  confettiAnimId = requestAnimationFrame(loop);
+}
+
+function showCelebration(r: Result): void {
+  pendingResult = r;
+  celebrationStartTime = Date.now();
+  body.classList.remove("typing");
+  testEl.hidden = true;
+  resultEl.hidden = true;
+
+  const preview = $("celebrationPreview");
+  if (preview) {
+    preview.innerHTML = `<span class="c-wpm">${Math.round(r.wpm)} <em>wpm</em></span> · <span class="c-acc">${Math.floor(r.acc)}% <em>acc</em></span>`;
+  }
+
+  celebrationModal.hidden = false;
+  startConfetti();
+
+  clearTimeout(celebrationTimer);
+  celebrationTimer = window.setTimeout(() => {
+    dismissCelebration();
+  }, 4500);
+}
+
+function dismissCelebration(): void {
+  clearTimeout(celebrationTimer);
+  stopConfetti();
+  celebrationModal.hidden = true;
+  if (pendingResult) {
+    const res = pendingResult;
+    pendingResult = null;
+    showResult(res);
+  }
+}
 
 function showResult(r: Result): void {
   body.classList.remove("typing");
@@ -515,6 +684,21 @@ function applyAppearance(): void {
   caret.classList.toggle("smooth", settings.smoothCaret);
   $("themeBtn").innerHTML =
     `<svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>${settings.theme}`;
+  if (themeToggleBtn) {
+    const light = isLightTheme(settings.theme);
+    themeToggleBtn.innerHTML = light ? ICON_MOON : ICON_SUN;
+    themeToggleBtn.title = light ? "Switch to default dark mode (dusk)" : "Switch to light mode (chalk)";
+  }
+}
+
+function toggleTheme(): void {
+  if (isLightTheme(settings.theme)) {
+    settings.theme = "dusk";
+  } else {
+    settings.theme = "chalk";
+  }
+  saveSettings();
+  applyAppearance();
 }
 
 // ---------------------------------------------------------------- modals
@@ -677,6 +861,23 @@ function openStats(): void {
 
 document.addEventListener("keydown", (e) => {
   if (e.getModifierState) $("caps").hidden = !e.getModifierState("CapsLock");
+  if (!celebrationModal.hidden) {
+    if (Date.now() - celebrationStartTime < 650) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+      e.preventDefault();
+      dismissCelebration();
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      dismissCelebration();
+      return newTest(e.shiftKey);
+    }
+    return;
+  }
   if (!modal.hidden) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -723,9 +924,12 @@ document.addEventListener("mousedown", (e) => {
 document.addEventListener("mousemove", (e) => {
   if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) body.classList.remove("typing");
 });
-window.addEventListener("blur", () => body.classList.add("blurred"));
+window.addEventListener("blur", () => {
+  if (!isInitialLoad && !document.documentElement.classList.contains("preload")) {
+    body.classList.add("blurred");
+  }
+});
 window.addEventListener("focus", () => body.classList.remove("blurred"));
-if (!document.hasFocus()) body.classList.add("blurred");
 window.addEventListener("resize", () => {
   if (!resultEl.hidden) drawChart(chart, samples);
   else placeCaret(true);
@@ -743,6 +947,13 @@ $("historyBtn").addEventListener("click", () => {
 $("settingsBtn").addEventListener("click", openSettings);
 $("themeBtn").addEventListener("click", openSettings);
 $("statsBtn").addEventListener("click", openStats);
+themeToggleBtn?.addEventListener("click", toggleTheme);
+viewScoreBtn?.addEventListener("click", dismissCelebration);
+celebrationModal?.addEventListener("mousedown", (e) => {
+  if (e.target === celebrationModal && Date.now() - celebrationStartTime > 500) {
+    dismissCelebration();
+  }
+});
 
 function updateLangLabel(): void {
   const l = $("langLabel");
@@ -784,7 +995,13 @@ renderConfig();
 newTest();
 document.fonts.ready.then(() => {
   lineH = parseFloat(getComputedStyle(wordsEl).fontSize) * 2;
+  caret.style.opacity = "";
   placeCaret(true);
+  caret.classList.add("blink");
+  isInitialLoad = false;
+  requestAnimationFrame(() => {
+    document.documentElement.classList.remove("preload");
+  });
   // The window starts hidden so it never flashes the wrong theme.
   if (isTauri) getCurrentWindow().show();
 });

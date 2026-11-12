@@ -29,4 +29,5 @@ export function themeByName(name: string): Theme {
 export function applyTheme(t: Theme): void {
   const s = document.documentElement.style;
   for (const k of ["bg", "alt", "sub", "text", "main", "error", "extra"] as const) s.setProperty(`--${k}`, t[k]);
+  s.backgroundColor = t.bg;
 }
