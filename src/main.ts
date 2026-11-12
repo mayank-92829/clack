@@ -25,9 +25,6 @@ const panel = $("panel");
 const chart = $<HTMLCanvasElement>("chart");
 const tip = $("tip");
 const themeToggleBtn = $("themeToggleBtn");
-const celebrationModal = $("celebration");
-const confettiCanvas = $<HTMLCanvasElement>("confettiCanvas");
-const viewScoreBtn = $("viewScoreBtn");
 
 // ---------------------------------------------------------------- test state
 
@@ -128,10 +125,6 @@ function buildTargets(): string[] {
 
 function newTest(repeat = false): void {
   clearTimeout(timer);
-  clearTimeout(celebrationTimer);
-  stopConfetti();
-  celebrationModal.hidden = true;
-  pendingResult = null;
 
   if (!repeat || !targets.length) targets = buildTargets();
   typed = [""];
@@ -411,157 +404,10 @@ function finish(): void {
     key: type.key,
     date: Date.now(),
   };
-  showCelebration(r);
+  showResult(r);
 }
 
-// ---------------------------------------------------------------- celebration & results
-
-interface ConfettiParticle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  color: string;
-  rotation: number;
-  vRot: number;
-  shape: "rect" | "circle";
-  opacity: number;
-  wobbleSpeed: number;
-}
-
-let pendingResult: Result | null = null;
-let celebrationTimer = 0;
-let confettiAnimId = 0;
-let celebrationStartTime = 0;
-
-function stopConfetti(): void {
-  if (confettiAnimId) {
-    cancelAnimationFrame(confettiAnimId);
-    confettiAnimId = 0;
-  }
-  const ctx = confettiCanvas.getContext("2d");
-  if (ctx) ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-}
-
-function startConfetti(): void {
-  stopConfetti();
-  const dpr = window.devicePixelRatio || 1;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  confettiCanvas.width = Math.round(w * dpr);
-  confettiCanvas.height = Math.round(h * dpr);
-  const ctx = confettiCanvas.getContext("2d");
-  if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const colors = ["#e0b25c", "#ef6f6c", "#7fc4dd", "#93d48f", "#d98ce6", "#ffc107", "#ff4081", "#00e676", "#29b6f6"];
-  const particles: ConfettiParticle[] = [];
-  const numParticles = 80;
-
-  for (let i = 0; i < numParticles; i++) {
-    const fromLeft = i % 2 === 0;
-    const originX = fromLeft ? w * 0.12 : w * 0.88;
-    const originY = h * 0.82;
-    const baseAngle = fromLeft ? -Math.PI / 4 : (-3 * Math.PI) / 4;
-    const angle = baseAngle + (Math.random() * 0.5 - 0.25);
-    const speed = 14 + Math.random() * 12;
-
-    particles.push({
-      x: originX,
-      y: originY,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      size: 7 + Math.random() * 7,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      rotation: Math.random() * Math.PI * 2,
-      vRot: (Math.random() - 0.5) * 0.22,
-      shape: Math.random() > 0.35 ? "rect" : "circle",
-      opacity: 1,
-      wobbleSpeed: 2 + Math.random() * 3,
-    });
-  }
-
-  let frame = 0;
-  const maxFrames = 220; // ~3.6s
-
-  function loop(): void {
-    frame++;
-    ctx!.clearRect(0, 0, w, h);
-    let alive = 0;
-
-    for (const p of particles) {
-      p.x += p.vx + Math.sin(frame * 0.1 * p.wobbleSpeed) * 0.7;
-      p.y += p.vy;
-      p.vy += 0.35; // gravity
-      p.vx *= 0.985; // air resistance
-      p.rotation += p.vRot;
-
-      if (frame > 140) {
-        p.opacity = Math.max(0, p.opacity - 0.015);
-      }
-
-      if (p.opacity > 0 && p.y < h + 30) {
-        alive++;
-        ctx!.save();
-        ctx!.globalAlpha = p.opacity;
-        ctx!.translate(p.x, p.y);
-        ctx!.rotate(p.rotation);
-        ctx!.fillStyle = p.color;
-
-        if (p.shape === "rect") {
-          ctx!.scale(Math.cos(p.rotation), 1);
-          ctx!.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
-        } else {
-          ctx!.beginPath();
-          ctx!.arc(0, 0, p.size / 2.5, 0, Math.PI * 2);
-          ctx!.fill();
-        }
-        ctx!.restore();
-      }
-    }
-
-    if (alive > 0 && frame < maxFrames) {
-      confettiAnimId = requestAnimationFrame(loop);
-    } else {
-      stopConfetti();
-    }
-  }
-
-  confettiAnimId = requestAnimationFrame(loop);
-}
-
-function showCelebration(r: Result): void {
-  pendingResult = r;
-  celebrationStartTime = Date.now();
-  body.classList.remove("typing");
-  testEl.hidden = true;
-  resultEl.hidden = true;
-
-  const preview = $("celebrationPreview");
-  if (preview) {
-    preview.innerHTML = `<span class="c-wpm">${Math.round(r.wpm)} <em>wpm</em></span> · <span class="c-acc">${Math.floor(r.acc)}% <em>acc</em></span>`;
-  }
-
-  celebrationModal.hidden = false;
-  startConfetti();
-
-  clearTimeout(celebrationTimer);
-  celebrationTimer = window.setTimeout(() => {
-    dismissCelebration();
-  }, 4500);
-}
-
-function dismissCelebration(): void {
-  clearTimeout(celebrationTimer);
-  stopConfetti();
-  celebrationModal.hidden = true;
-  if (pendingResult) {
-    const res = pendingResult;
-    pendingResult = null;
-    showResult(res);
-  }
-}
+// ---------------------------------------------------------------- results
 
 function showResult(r: Result): void {
   body.classList.remove("typing");
@@ -861,23 +707,6 @@ function openStats(): void {
 
 document.addEventListener("keydown", (e) => {
   if (e.getModifierState) $("caps").hidden = !e.getModifierState("CapsLock");
-  if (!celebrationModal.hidden) {
-    if (Date.now() - celebrationStartTime < 650) {
-      e.preventDefault();
-      return;
-    }
-    if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
-      e.preventDefault();
-      dismissCelebration();
-      return;
-    }
-    if (e.key === "Tab") {
-      e.preventDefault();
-      dismissCelebration();
-      return newTest(e.shiftKey);
-    }
-    return;
-  }
   if (!modal.hidden) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -948,12 +777,6 @@ $("settingsBtn").addEventListener("click", openSettings);
 $("themeBtn").addEventListener("click", openSettings);
 $("statsBtn").addEventListener("click", openStats);
 themeToggleBtn?.addEventListener("click", toggleTheme);
-viewScoreBtn?.addEventListener("click", dismissCelebration);
-celebrationModal?.addEventListener("mousedown", (e) => {
-  if (e.target === celebrationModal && Date.now() - celebrationStartTime > 500) {
-    dismissCelebration();
-  }
-});
 
 function updateLangLabel(): void {
   const l = $("langLabel");
